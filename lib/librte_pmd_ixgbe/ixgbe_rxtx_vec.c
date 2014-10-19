@@ -38,7 +38,7 @@
 #include "ixgbe_ethdev.h"
 #include "ixgbe_rxtx.h"
 
-#include <nmmintrin.h>
+#include <tmmintrin.h>
 
 #ifndef __INTEL_COMPILER
 #pragma GCC diagnostic ignored "-Wcast-qual"
@@ -277,7 +277,7 @@ ixgbe_recv_pkts_vec(void *rx_queue, struct rte_mbuf **rx_pkts,
 		descs[3] = _mm_loadu_si128((__m128i *)(rxdp + 3));
 
 		/* B.2 copy 2 mbuf point into rx_pkts  */
-		_mm_store_si128((__m128i *)&rx_pkts[pos], mbp1);
+		_mm_storeu_si128((__m128i *)&rx_pkts[pos], mbp1);
 
 		/* B.1 load 1 mbuf point */
 		mbp2 = _mm_loadu_si128((__m128i *)&sw_ring[pos+2]);
@@ -288,7 +288,7 @@ ixgbe_recv_pkts_vec(void *rx_queue, struct rte_mbuf **rx_pkts,
 		descs[0] = _mm_loadu_si128((__m128i *)(rxdp));
 
 		/* B.2 copy 2 mbuf point into rx_pkts  */
-		_mm_store_si128((__m128i *)&rx_pkts[pos+2], mbp2);
+		_mm_storeu_si128((__m128i *)&rx_pkts[pos+2], mbp2);
 
 		/* avoid compiler reorder optimization */
 		rte_compiler_barrier();
@@ -338,7 +338,7 @@ ixgbe_recv_pkts_vec(void *rx_queue, struct rte_mbuf **rx_pkts,
 				pkt_mb1);
 
 		/* C.4 calc avaialbe number of desc */
-		var = _mm_popcnt_u64(_mm_cvtsi128_si64(staterr));
+		var = __builtin_popcountll(_mm_cvtsi128_si64(staterr));
 		nb_pkts_recd += var;
 		if (likely(var != RTE_IXGBE_DESCS_PER_LOOP))
 			break;

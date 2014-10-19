@@ -33,7 +33,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_DISTRIBUTOR
 #include <unistd.h>
 #include <string.h>
 #include <rte_cycles.h>
@@ -282,7 +281,7 @@ sanity_test_with_mbuf_alloc(struct rte_distributor *d, struct rte_mempool *p)
 			rte_distributor_process(d, NULL, 0);
 		for (j = 0; j < BURST; j++) {
 			bufs[j]->pkt.hash.rss = (i+j) << 1;
-			bufs[j]->refcnt = 1;
+			rte_mbuf_refcnt_set(bufs[j], 1);
 		}
 
 		rte_distributor_process(d, bufs, BURST);
@@ -503,7 +502,7 @@ quit_workers(struct rte_distributor *d, struct rte_mempool *p)
 
 #define MBUF_SIZE (2048 + sizeof(struct rte_mbuf) + RTE_PKTMBUF_HEADROOM)
 
-int
+static int
 test_distributor(void)
 {
 	static struct rte_distributor *d;
@@ -581,15 +580,8 @@ err:
 	return -1;
 }
 
-#else
-
-#include <stdio.h>
-
-int
-test_distributor(void)
-{
-	printf("Distributor is not enabled in configuration\n");
-	return 0;
-}
-
-#endif
+static struct test_command distributor_cmd = {
+	.command = "distributor_autotest",
+	.callback = test_distributor,
+};
+REGISTER_TEST_COMMAND(distributor_cmd);

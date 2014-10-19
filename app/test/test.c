@@ -96,7 +96,9 @@ do_recursive_call(void)
 			{ "test_memory_flags", no_action },
 			{ "test_file_prefix", no_action },
 			{ "test_no_huge_flag", no_action },
+#ifdef RTE_LIBRTE_IVSHMEM
 			{ "test_ivshmem", test_ivshmem },
+#endif
 	};
 
 	if (recursive_call == NULL)
@@ -126,6 +128,9 @@ main(int argc, char **argv)
 	rte_timer_subsystem_init();
 #endif
 
+	if (commands_init() < 0)
+		return -1;
+
 	argv += ret;
 
 	prgname = argv[0];
@@ -150,6 +155,59 @@ main(int argc, char **argv)
 	cmdline_interact(cl);
 	cmdline_stdin_exit(cl);
 #endif
+
+	return 0;
+}
+
+
+int
+unit_test_suite_runner(struct unit_test_suite *suite)
+{
+	int retval, i = 0;
+
+	if (suite->suite_name)
+		printf("Test Suite : %s\n", suite->suite_name);
+
+	if (suite->setup)
+		if (suite->setup() != 0)
+			return -1;
+
+	while (suite->unit_test_cases[i].testcase) {
+		/* Run test case setup */
+		if (suite->unit_test_cases[i].setup) {
+			retval = suite->unit_test_cases[i].setup();
+			if (retval != 0)
+				return retval;
+		}
+
+		/* Run test case */
+		if (suite->unit_test_cases[i].testcase() == 0) {
+			printf("TestCase %2d: %s\n", i,
+					suite->unit_test_cases[i].success_msg ?
+					suite->unit_test_cases[i].success_msg :
+					"passed");
+		}
+		else {
+			printf("TestCase %2d: %s\n", i, suite->unit_test_cases[i].fail_msg ?
+					suite->unit_test_cases[i].fail_msg :
+					"failed");
+			return -1;
+		}
+
+		/* Run test case teardown */
+		if (suite->unit_test_cases[i].teardown) {
+			retval = suite->unit_test_cases[i].teardown();
+			if (retval != 0)
+				return retval;
+		}
+
+		i++;
+	}
+
+	/* Run test suite teardown */
+	if (suite->teardown)
+		if (suite->teardown() != 0)
+			return -1;
 
 	return 0;
 }

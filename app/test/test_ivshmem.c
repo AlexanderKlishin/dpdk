@@ -43,8 +43,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_IVSHMEM
-
 #include <rte_common.h>
 #include <rte_ivshmem.h>
 #include <rte_string_fns.h>
@@ -431,12 +429,9 @@ test_ivshmem(void)
 
 	return -1;
 }
-#else /* RTE_LIBRTE_IVSHMEM */
 
-int
-test_ivshmem(void)
-{
-	printf("This binary was not compiled with IVSHMEM support!\n");
-	return 0;
-}
-#endif /* RTE_LIBRTE_IVSHMEM */
+static struct test_command ivshmem_cmd = {
+	.command = "ivshmem_autotest",
+	.callback = test_ivshmem,
+};
+REGISTER_TEST_COMMAND(ivshmem_cmd);

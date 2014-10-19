@@ -39,7 +39,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_KNI
 #include <rte_string_fns.h>
 #include <rte_mempool.h>
 #include <rte_ethdev.h>
@@ -488,7 +487,7 @@ fail_kni:
 	return ret;
 }
 
-int
+static int
 test_kni(void)
 {
 	int ret = -1;
@@ -680,13 +679,8 @@ fail:
 	return ret;
 }
 
-#else /* RTE_LIBRTE_KNI */
-
-int
-test_kni(void)
-{
-	printf("The KNI library is not included in this build\n");
-	return 0;
-}
-
-#endif /* RTE_LIBRTE_KNI */
+static struct test_command kni_cmd = {
+	.command = "kni_autotest",
+	.callback = test_kni,
+};
+REGISTER_TEST_COMMAND(kni_cmd);

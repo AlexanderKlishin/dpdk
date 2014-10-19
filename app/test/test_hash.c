@@ -52,8 +52,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_HASH
-
 #include <rte_hash.h>
 #include <rte_fbk_hash.h>
 #include <rte_jhash.h>
@@ -1330,7 +1328,8 @@ fail_jhash_3word:
 /*
  * Do all unit and performance tests.
  */
-int test_hash(void)
+static int
+test_hash(void)
 {
 	if (test_add_delete() < 0)
 		return -1;
@@ -1366,13 +1365,9 @@ int test_hash(void)
 
 	return 0;
 }
-#else /* RTE_LIBRTE_HASH */
 
-int
-test_hash(void)
-{
-	printf("The Hash library is not included in this build\n");
-	return 0;
-}
-
-#endif /* RTE_LIBRTE_HASH */
+static struct test_command hash_cmd = {
+	.command = "hash_autotest",
+	.callback = test_hash,
+};
+REGISTER_TEST_COMMAND(hash_cmd);

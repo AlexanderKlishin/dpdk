@@ -39,8 +39,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_POWER
-
 #include <rte_power.h>
 
 #define TEST_POWER_LCORE_ID      2U
@@ -379,7 +377,7 @@ check_power_freq_min(void)
 	return 0;
 }
 
-int
+static int
 test_power(void)
 {
 	int ret = -1;
@@ -477,14 +475,8 @@ fail_all:
 	return -1;
 }
 
-#else /* RTE_LIBRTE_POWER */
-
-int
-test_power(void)
-{
-	printf("The power library is not included in this build\n");
-	return 0;
-}
-
-#endif /* RTE_LIBRTE_POWER */
-
+static struct test_command power_cmd = {
+	.command = "power_autotest",
+	.callback = test_power,
+};
+REGISTER_TEST_COMMAND(power_cmd);

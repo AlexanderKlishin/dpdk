@@ -50,6 +50,7 @@
 #include <rte_errno.h>
 #include <rte_ring.h>
 #include <rte_mempool.h>
+#include <rte_malloc.h>
 #include <rte_common.h>
 #include <rte_ivshmem.h>
 #include <rte_tailq_elem.h>
@@ -61,7 +62,6 @@
 #define PCI_DEVICE_ID_IVSHMEM 0x1110
 
 #define IVSHMEM_MAGIC 0x0BADC0DE
-#define IVSHMEM_METADATA_SIZE 0x1000
 
 #define IVSHMEM_RESOURCE_PATH "/sys/bus/pci/devices/%04x:%02x:%02x.%x/resource2"
 #define IVSHMEM_CONFIG_PATH "/var/run/.%s_ivshmem_config"
@@ -101,7 +101,7 @@ static int memseg_idx;
 static int pagesz;
 
 /* Tailq heads to add rings to */
-TAILQ_HEAD(rte_ring_list, rte_ring);
+TAILQ_HEAD(rte_ring_list, rte_tailq_entry);
 
 /*
  * Utility functions
@@ -754,6 +754,7 @@ rte_eal_ivshmem_obj_init(void)
 	struct ivshmem_segment * seg;
 	struct rte_memzone * mz;
 	struct rte_ring * r;
+	struct rte_tailq_entry *te;
 	unsigned i, ms, idx;
 	uint64_t offset;
 
@@ -808,6 +809,8 @@ rte_eal_ivshmem_obj_init(void)
 		mcfg->memzone_idx++;
 	}
 
+	rte_rwlock_write_lock(RTE_EAL_TAILQ_RWLOCK);
+
 	/* find rings */
 	for (i = 0; i < mcfg->memzone_idx; i++) {
 		mz = &mcfg->memzone[i];
@@ -819,10 +822,19 @@ rte_eal_ivshmem_obj_init(void)
 
 		r = (struct rte_ring*) (mz->addr_64);
 
-		TAILQ_INSERT_TAIL(ring_list, r, next);
+		te = rte_zmalloc("RING_TAILQ_ENTRY", sizeof(*te), 0);
+		if (te == NULL) {
+			RTE_LOG(ERR, EAL, "Cannot allocate ring tailq entry!\n");
+			return -1;
+		}
+
+		te->data = (void *) r;
+
+		TAILQ_INSERT_TAIL(ring_list, te, next);
 
 		RTE_LOG(DEBUG, EAL, "Found ring: '%s' at %p\n", r->name, mz->addr);
 	}
+	rte_rwlock_write_unlock(RTE_EAL_TAILQ_RWLOCK);
 
 #ifdef RTE_LIBRTE_IVSHMEM_DEBUG
 	rte_memzone_dump(stdout);

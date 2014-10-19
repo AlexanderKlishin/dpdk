@@ -36,13 +36,66 @@
 
 #define	BIT_SIZEOF(x)	(sizeof(x) * CHAR_BIT)
 
-TAILQ_HEAD(rte_acl_list, rte_acl_ctx);
+TAILQ_HEAD(rte_acl_list, rte_tailq_entry);
+
+static const rte_acl_classify_t classify_fns[] = {
+	[RTE_ACL_CLASSIFY_DEFAULT] = rte_acl_classify_scalar,
+	[RTE_ACL_CLASSIFY_SCALAR] = rte_acl_classify_scalar,
+	[RTE_ACL_CLASSIFY_SSE] = rte_acl_classify_sse,
+};
+
+/* by default, use always avaialbe scalar code path. */
+static enum rte_acl_classify_alg rte_acl_default_classify =
+	RTE_ACL_CLASSIFY_SCALAR;
+
+static void
+rte_acl_set_default_classify(enum rte_acl_classify_alg alg)
+{
+	rte_acl_default_classify = alg;
+}
+
+extern int
+rte_acl_set_ctx_classify(struct rte_acl_ctx *ctx, enum rte_acl_classify_alg alg)
+{
+	if (ctx == NULL || (uint32_t)alg >= RTE_DIM(classify_fns))
+		return -EINVAL;
+
+	ctx->alg = alg;
+	return 0;
+}
+
+static void __attribute__((constructor))
+rte_acl_init(void)
+{
+	enum rte_acl_classify_alg alg = RTE_ACL_CLASSIFY_DEFAULT;
+
+	if (rte_cpu_get_flag_enabled(RTE_CPUFLAG_SSE4_1))
+		alg = RTE_ACL_CLASSIFY_SSE;
+
+	rte_acl_set_default_classify(alg);
+}
+
+int
+rte_acl_classify(const struct rte_acl_ctx *ctx, const uint8_t **data,
+	uint32_t *results, uint32_t num, uint32_t categories)
+{
+	return classify_fns[ctx->alg](ctx, data, results, num, categories);
+}
+
+int
+rte_acl_classify_alg(const struct rte_acl_ctx *ctx, const uint8_t **data,
+	uint32_t *results, uint32_t num, uint32_t categories,
+	enum rte_acl_classify_alg alg)
+{
+	return classify_fns[alg](ctx, data, results, num, categories);
+}
 
 struct rte_acl_ctx *
 rte_acl_find_existing(const char *name)
 {
-	struct rte_acl_ctx *ctx;
+	struct rte_acl_ctx *ctx = NULL;
 	struct rte_acl_list *acl_list;
+	struct rte_tailq_entry *te;
 
 	/* check that we have an initialised tail queue */
 	acl_list = RTE_TAILQ_LOOKUP_BY_IDX(RTE_TAILQ_ACL, rte_acl_list);
@@ -52,27 +105,55 @@ rte_acl_find_existing(const char *name)
 	}
 
 	rte_rwlock_read_lock(RTE_EAL_TAILQ_RWLOCK);
-	TAILQ_FOREACH(ctx, acl_list, next) {
+	TAILQ_FOREACH(te, acl_list, next) {
+		ctx = (struct rte_acl_ctx *) te->data;
 		if (strncmp(name, ctx->name, sizeof(ctx->name)) == 0)
 			break;
 	}
 	rte_rwlock_read_unlock(RTE_EAL_TAILQ_RWLOCK);
 
-	if (ctx == NULL)
+	if (te == NULL) {
 		rte_errno = ENOENT;
+		return NULL;
+	}
 	return ctx;
 }
 
 void
 rte_acl_free(struct rte_acl_ctx *ctx)
 {
+	struct rte_acl_list *acl_list;
+	struct rte_tailq_entry *te;
+
 	if (ctx == NULL)
 		return;
 
-	RTE_EAL_TAILQ_REMOVE(RTE_TAILQ_ACL, rte_acl_list, ctx);
+	/* check that we have an initialised tail queue */
+	acl_list = RTE_TAILQ_LOOKUP_BY_IDX(RTE_TAILQ_ACL, rte_acl_list);
+	if (acl_list == NULL) {
+		rte_errno = E_RTE_NO_TAILQ;
+		return;
+	}
+
+	rte_rwlock_write_lock(RTE_EAL_TAILQ_RWLOCK);
+
+	/* find our tailq entry */
+	TAILQ_FOREACH(te, acl_list, next) {
+		if (te->data == (void *) ctx)
+			break;
+	}
+	if (te == NULL) {
+		rte_rwlock_write_unlock(RTE_EAL_TAILQ_RWLOCK);
+		return;
+	}
+
+	TAILQ_REMOVE(acl_list, te, next);
+
+	rte_rwlock_write_unlock(RTE_EAL_TAILQ_RWLOCK);
 
 	rte_free(ctx->mem);
 	rte_free(ctx);
+	rte_free(te);
 }
 
 struct rte_acl_ctx *
@@ -81,6 +162,7 @@ rte_acl_create(const struct rte_acl_param *param)
 	size_t sz;
 	struct rte_acl_ctx *ctx;
 	struct rte_acl_list *acl_list;
+	struct rte_tailq_entry *te;
 	char name[sizeof(ctx->name)];
 
 	/* check that we have an initialised tail queue */
@@ -105,30 +187,45 @@ rte_acl_create(const struct rte_acl_param *param)
 	rte_rwlock_write_lock(RTE_EAL_TAILQ_RWLOCK);
 
 	/* if we already have one with that name */
-	TAILQ_FOREACH(ctx, acl_list, next) {
+	TAILQ_FOREACH(te, acl_list, next) {
+		ctx = (struct rte_acl_ctx *) te->data;
 		if (strncmp(param->name, ctx->name, sizeof(ctx->name)) == 0)
 			break;
 	}
 
 	/* if ACL with such name doesn't exist, then create a new one. */
-	if (ctx == NULL && (ctx = rte_zmalloc_socket(name, sz, CACHE_LINE_SIZE,
-			param->socket_id)) != NULL) {
+	if (te == NULL) {
+		ctx = NULL;
+		te = rte_zmalloc("ACL_TAILQ_ENTRY", sizeof(*te), 0);
 
+		if (te == NULL) {
+			RTE_LOG(ERR, ACL, "Cannot allocate tailq entry!\n");
+			goto exit;
+		}
+
+		ctx = rte_zmalloc_socket(name, sz, CACHE_LINE_SIZE, param->socket_id);
+
+		if (ctx == NULL) {
+			RTE_LOG(ERR, ACL,
+				"allocation of %zu bytes on socket %d for %s failed\n",
+				sz, param->socket_id, name);
+			rte_free(te);
+			goto exit;
+		}
 		/* init new allocated context. */
 		ctx->rules = ctx + 1;
 		ctx->max_rules = param->max_rule_num;
 		ctx->rule_sz = param->rule_size;
 		ctx->socket_id = param->socket_id;
+		ctx->alg = rte_acl_default_classify;
 		snprintf(ctx->name, sizeof(ctx->name), "%s", param->name);
 
-		TAILQ_INSERT_TAIL(acl_list, ctx, next);
+		te->data = (void *) ctx;
 
-	} else if (ctx == NULL) {
-		RTE_LOG(ERR, ACL,
-			"allocation of %zu bytes on socket %d for %s failed\n",
-			sz, param->socket_id, name);
+		TAILQ_INSERT_TAIL(acl_list, te, next);
 	}
 
+exit:
 	rte_rwlock_write_unlock(RTE_EAL_TAILQ_RWLOCK);
 	return ctx;
 }
@@ -217,6 +314,8 @@ rte_acl_dump(const struct rte_acl_ctx *ctx)
 	if (!ctx)
 		return;
 	printf("acl context <%s>@%p\n", ctx->name, ctx);
+	printf("  socket_id=%"PRId32"\n", ctx->socket_id);
+	printf("  alg=%"PRId32"\n", ctx->alg);
 	printf("  max_rules=%"PRIu32"\n", ctx->max_rules);
 	printf("  rule_size=%"PRIu32"\n", ctx->rule_sz);
 	printf("  num_rules=%"PRIu32"\n", ctx->num_rules);
@@ -232,6 +331,7 @@ rte_acl_list_dump(void)
 {
 	struct rte_acl_ctx *ctx;
 	struct rte_acl_list *acl_list;
+	struct rte_tailq_entry *te;
 
 	/* check that we have an initialised tail queue */
 	acl_list = RTE_TAILQ_LOOKUP_BY_IDX(RTE_TAILQ_ACL, rte_acl_list);
@@ -241,7 +341,8 @@ rte_acl_list_dump(void)
 	}
 
 	rte_rwlock_read_lock(RTE_EAL_TAILQ_RWLOCK);
-	TAILQ_FOREACH(ctx, acl_list, next) {
+	TAILQ_FOREACH(te, acl_list, next) {
+		ctx = (struct rte_acl_ctx *) te->data;
 		rte_acl_dump(ctx);
 	}
 	rte_rwlock_read_unlock(RTE_EAL_TAILQ_RWLOCK);

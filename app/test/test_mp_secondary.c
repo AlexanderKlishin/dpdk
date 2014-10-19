@@ -35,7 +35,6 @@
 
 #include "test.h"
 
-#ifndef RTE_EXEC_ENV_BAREMETAL
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -265,16 +264,8 @@ test_mp_secondary(void)
 	return run_object_creation_tests();
 }
 
-#else
-
-/* Baremetal version
- * Multiprocess not applicable, so just return 0 always
- */
-int
-test_mp_secondary(void)
-{
-	printf("Multi-process not applicable for baremetal\n");
-	return 0;
-}
-
-#endif
+static struct test_command multiprocess_cmd = {
+	.command = "multiprocess_autotest",
+	.callback = test_mp_secondary,
+};
+REGISTER_TEST_COMMAND(multiprocess_cmd);

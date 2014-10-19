@@ -614,7 +614,9 @@ init_config(void)
 	 * Records which Mbuf pool to use by each logical core, if needed.
 	 */
 	for (lc_id = 0; lc_id < nb_lcores; lc_id++) {
-		mbp = mbuf_pool_find(rte_lcore_to_socket_id(lc_id));
+		mbp = mbuf_pool_find(
+			rte_lcore_to_socket_id(fwd_lcores_cpuids[lc_id]));
+
 		if (mbp == NULL)
 			mbp = mbuf_pool_find(0);
 		fwd_lcores[lc_id]->mbp = mbp;
@@ -1509,6 +1511,18 @@ all_ports_stopped(void)
 		if (port->port_status != RTE_PORT_STOPPED)
 			return 0;
 	}
+
+	return 1;
+}
+
+int
+port_is_started(portid_t port_id)
+{
+	if (port_id_is_invalid(port_id))
+		return -1;
+
+	if (ports[port_id].port_status != RTE_PORT_STARTED)
+		return 0;
 
 	return 1;
 }

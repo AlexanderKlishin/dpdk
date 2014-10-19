@@ -33,7 +33,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_TIMER
 /*
  * Timer
  * =====
@@ -457,7 +456,7 @@ timer_sanity_check(void)
 	return 0;
 }
 
-int
+static int
 test_timer(void)
 {
 	unsigned i;
@@ -520,12 +519,8 @@ test_timer(void)
 	return 0;
 }
 
-#else
-
-int
-test_timer(void)
-{
-	return 0;
-}
-
-#endif
+static struct test_command timer_cmd = {
+	.command = "timer_autotest",
+	.callback = test_timer,
+};
+REGISTER_TEST_COMMAND(timer_cmd);

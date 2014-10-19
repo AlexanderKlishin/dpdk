@@ -149,11 +149,11 @@ struct rte_acl_bld_trie {
 };
 
 struct rte_acl_ctx {
-	TAILQ_ENTRY(rte_acl_ctx) next;    /**< Next in list. */
 	char                name[RTE_ACL_NAMESIZE];
 	/** Name of the ACL context. */
 	int32_t             socket_id;
 	/** Socket ID to allocate memory from. */
+	enum rte_acl_classify_alg alg;
 	void               *rules;
 	uint32_t            max_rules;
 	uint32_t            rule_sz;
@@ -174,6 +174,20 @@ struct rte_acl_ctx {
 int rte_acl_gen(struct rte_acl_ctx *ctx, struct rte_acl_trie *trie,
 	struct rte_acl_bld_trie *node_bld_trie, uint32_t num_tries,
 	uint32_t num_categories, uint32_t data_index_sz, int match_num);
+
+typedef int (*rte_acl_classify_t)
+(const struct rte_acl_ctx *, const uint8_t **, uint32_t *, uint32_t, uint32_t);
+
+/*
+ * Different implementations of ACL classify.
+ */
+int
+rte_acl_classify_scalar(const struct rte_acl_ctx *ctx, const uint8_t **data,
+	uint32_t *results, uint32_t num, uint32_t categories);
+
+int
+rte_acl_classify_sse(const struct rte_acl_ctx *ctx, const uint8_t **data,
+	uint32_t *results, uint32_t num, uint32_t categories);
 
 #ifdef __cplusplus
 }

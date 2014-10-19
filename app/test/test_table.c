@@ -31,19 +31,6 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-#ifndef RTE_LIBRTE_TABLE
-
-#include "test.h"
-
-int
-test_table(void)
-{
-	return 0;
-}
-
-#else
-
 #include <rte_byteorder.h>
 #include <rte_hexdump.h>
 #include <rte_string_fns.h>
@@ -156,7 +143,7 @@ app_init_rings(void)
 
 }
 
-int
+static int
 test_table(void)
 {
 	int status, failures;
@@ -217,4 +204,8 @@ test_table(void)
 	return 0;
 }
 
-#endif
+static struct test_command table_cmd = {
+	.command = "table_autotest",
+	.callback = test_table,
+};
+REGISTER_TEST_COMMAND(table_cmd);

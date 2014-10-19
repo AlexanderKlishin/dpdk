@@ -32,7 +32,6 @@
  */
 
 #include "test.h"
-#ifndef RTE_EXEC_ENV_BAREMETAL
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -196,18 +195,16 @@ error:
 	return -1;
 }
 
-int
+static int
 test_eal_fs(void)
 {
 	if (test_parse_sysfs_value() < 0)
 		return -1;
 	return 0;
 }
-#else
-/* baremetal does not have a filesystem */
-int
-test_eal_fs(void)
-{
-	return 0;
-}
-#endif
+
+static struct test_command eal_fs_cmd = {
+	.command = "eal_fs_autotest",
+	.callback = test_eal_fs,
+};
+REGISTER_TEST_COMMAND(eal_fs_cmd);

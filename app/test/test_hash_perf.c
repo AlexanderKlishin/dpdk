@@ -53,8 +53,6 @@
 
 #include "test.h"
 
-#ifdef RTE_LIBRTE_HASH
-
 #include <rte_hash.h>
 #include <rte_fbk_hash.h>
 #include <rte_jhash.h>
@@ -761,7 +759,8 @@ fbk_hash_perf_test(void)
 /*
  * Do all unit and performance tests.
  */
-int test_hash_perf(void)
+static int
+test_hash_perf(void)
 {
 	if (run_all_tbl_perf_tests() < 0)
 		return -1;
@@ -771,13 +770,9 @@ int test_hash_perf(void)
 		return -1;
 	return 0;
 }
-#else /* RTE_LIBRTE_HASH */
 
-int
-test_hash_perf(void)
-{
-	printf("The Hash library is not included in this build\n");
-	return 0;
-}
-
-#endif /* RTE_LIBRTE_HASH */
+static struct test_command hash_perf_cmd = {
+	.command = "hash_perf_autotest",
+	.callback = test_hash_perf,
+};
+REGISTER_TEST_COMMAND(hash_perf_cmd);
